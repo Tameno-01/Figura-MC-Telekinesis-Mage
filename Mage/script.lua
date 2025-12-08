@@ -22,6 +22,8 @@ local left_item_pivot = left_item_part.PivotItemLeft
 local right_item_pivot = right_item_part.PivotItemRight
 local left_item_parent = left_item_pivot.OffsetItemLeft
 local right_item_parent = right_item_pivot.OffsetItemRight
+local root = models.model.root
+local head = root.CustomHead
 
 local always_playing_anims = {
 	"stand",
@@ -33,6 +35,8 @@ local always_playing_anims = {
 	"walk_back_right_arm",
 	"hold_item_left",
 	"hold_item_right",
+	"air_forward",
+	"air_back",
 }
 
 local walk_anims = {
@@ -76,6 +80,12 @@ local left_item_prev_desired_pos
 local right_item_prev_desired_pos
 
 local item_bob_progress = 0
+
+local standard_anims_blend = 1
+local hold_item_left_blend
+local hold_item_right_blend
+local empty_hand_left_blend
+local empty_hand_right_blend
 
 vanilla_model.ALL:setVisible(false)
 
@@ -138,24 +148,29 @@ end
 
 local function held_item_changed(item_stack, left)
 	local item_pivot
-	local hold_blend_value_name
 	if left then
 		item_pivot = left_item_pivot
-		hold_blend_value_name = "hold_item_left_anim_blend"
 	else
 		item_pivot = right_item_pivot
-		hold_blend_value_name = "hold_item_right_anim_blend"
 	end
 	item_pivot:setRot(get_item_rotation(item_stack))
+	local hold_item_blend
+	local empty_hand_blend
 	if item_stack.id == "minecraft:air" then
-		tick_tween:setValue(hold_blend_value_name, 0)
+		hold_item_blend = 0
+		empty_hand_blend = 1
 	else
-		tick_tween:setValue(hold_blend_value_name, 1)
+		hold_item_blend = 1
+		empty_hand_blend = 0
 	end
 	if left then
 		current_left_item = item_stack
+		hold_item_left_blend = hold_item_blend
+		empty_hand_left_blend = empty_hand_blend
 	else
 		current_right_item = item_stack
+		hold_item_right_blend = hold_item_blend
+		empty_hand_right_blend = empty_hand_blend
 	end
 end
 
@@ -214,44 +229,83 @@ local function set_walk_animation_speed(speed)
 	end
 end
 
-local function set_walk_blend(blend, forward)
-	local back = 1 - forward
-	tick_tween:setValue("walk_forward_anim_blend", blend * forward)
-	tick_tween:setValue("walk_back_anim_blend", blend * back)
-	tick_tween:setValue("stand_anim_blend", 1 - blend)
-	if current_left_item.id == "minecraft:air" then
-		tick_tween:setValue("walk_forward_left_arm_anim_blend", blend * forward)
-		tick_tween:setValue("walk_back_left_arm_anim_blend", blend * back)
-	else
-		tick_tween:setValue("walk_forward_left_arm_anim_blend", 0)
-	end
-	if current_right_item.id == "minecraft:air" then
-		tick_tween:setValue("walk_forward_right_arm_anim_blend", blend * forward)
-		tick_tween:setValue("walk_back_right_arm_anim_blend", blend * back)
-	else
-		tick_tween:setValue("walk_forward_right_arm_anim_blend", 0)
-	end
-end
-
 local function tick_animations()
+	local ground
+	local air
+	if player:isOnGround() then
+		ground = 1
+		air = 0
+	else
+		ground = 0
+		air = 1
+	end
 	local velocity = player:getVelocity()
 	local velocity_flat = vec(velocity.x, velocity.z)
 	local speed = velocity_flat:length()
+	if speed < VANILLA_WALK_SPEED then
+		set_walk_animation_speed(speed * WALK_ANIM_BASE_SPEED / VANILLA_WALK_SPEED)
+	else
+		set_walk_animation_speed(WALK_ANIM_BASE_SPEED)
+	end
+	local moving = math.min(speed / VANILLA_WALK_SPEED, 1)
+	local stopped = 1 - moving
 	local rot = player:getRot().y
 	local front = vec(degSin(-rot), degCos(-rot))
 	local forward
+	local back
 	if front:dot(velocity_flat:normalized()) < -0.01 then
 		forward = 0
+		back = 1
 	else
 		forward = 1
+		back = 0
 	end
-	if speed > VANILLA_WALK_SPEED then
-		set_walk_animation_speed(speed * WALK_ANIM_BASE_SPEED / VANILLA_WALK_SPEED)
-		set_walk_blend(1, forward)
-	else
-		set_walk_animation_speed(WALK_ANIM_BASE_SPEED)
-		set_walk_blend(speed / VANILLA_WALK_SPEED, forward)
-	end
+	local air_forward = math.lerp(0.5, forward, moving)
+	local air_back = 1 - air_forward
+	tick_tween:setValue(
+		"hold_item_left_anim_blend",
+		hold_item_left_blend
+	)
+	tick_tween:setValue(
+		"hold_item_right_anim_blend",
+		hold_item_right_blend
+	)
+	tick_tween:setValue(
+		"walk_forward_anim_blend",
+		standard_anims_blend * ground * moving * forward
+	)
+	tick_tween:setValue(
+		"walk_forward_left_arm_anim_blend",
+		standard_anims_blend * ground * moving * forward * empty_hand_left_blend
+	)
+	tick_tween:setValue(
+		"walk_forward_right_arm_anim_blend",
+		standard_anims_blend * ground * moving * forward * empty_hand_right_blend
+	)
+	tick_tween:setValue(
+		"walk_back_anim_blend",
+		standard_anims_blend * ground * moving * back
+	)
+	tick_tween:setValue(
+		"walk_back_left_arm_anim_blend",
+		standard_anims_blend * ground * moving * back * empty_hand_left_blend
+	)
+	tick_tween:setValue(
+		"walk_back_right_arm_anim_blend",
+		standard_anims_blend * ground * moving * back * empty_hand_right_blend
+	)
+	tick_tween:setValue(
+		"stand_anim_blend",
+		standard_anims_blend * ground * stopped
+	)
+	tick_tween:setValue(
+		"air_forward_anim_blend",
+		standard_anims_blend * air * air_forward
+	)
+	tick_tween:setValue(
+		"air_back_anim_blend",
+		standard_anims_blend * air * air_back
+	)
 end
 
 function events.entity_init()
@@ -287,6 +341,7 @@ end
 
 function events.render(delta)
 	tick_tween:render(delta)
+	head:setRot(vanilla_model.head:getOriginRot())
 end
 
 function events.item_render(item, mode, pos, rot, scale, left)
@@ -339,14 +394,14 @@ if host:isHost() then
 				update_item_use_pos()
 			end
 			local left = (swing_arm == "MAIN_HAND") == player:isLeftHanded()
-			pings.useItem(left, item_use_pos)
+			pings.use_item(left, item_use_pos)
 		end
 		item_use_pos = nil
 	end
 
 end
 
-function pings.useItem(left, pos)
+function pings.use_item(left, pos)
 	if pos == nil then
 		return
 	end
