@@ -13,6 +13,8 @@ local ITEM_USE_DISTANCE = 4
 local ITEM_USE_HEIGHT_OFFSET = 1
 local VANILLA_WALK_SPEED = 0.21585
 local WALK_ANIM_BASE_SPEED = 2
+local VANILLA_WALK_SPEED_SNEAKING = 0.06475
+local WALK_ANIM_BASE_SPEED_SNEAKING = 0.7
 
 local item_empty = models.model.ItemEmpty
 local world = models.model.World
@@ -41,6 +43,11 @@ local always_playing_anims = {
 	"air_back",
 	"air_back_left_arm",
 	"air_back_right_arm",
+	"sneak",
+	"sneak_forward",
+	"sneak_back",
+	"sneak_left_arm",
+	"sneak_right_arm",
 }
 
 local walk_anims = {
@@ -50,6 +57,8 @@ local walk_anims = {
 	"walk_back",
 	"walk_back_left_arm",
 	"walk_back_right_arm",
+	"sneak_forward",
+	"sneak_back",
 }
 
 local block_face_normals = {
@@ -85,7 +94,6 @@ local right_item_prev_desired_pos
 
 local item_bob_progress = 0
 
-local standard_anims_blend = 1
 local hold_item_left_blend
 local hold_item_right_blend
 local empty_hand_left_blend
@@ -234,6 +242,35 @@ local function set_walk_animation_speed(speed)
 end
 
 local function tick_animations()
+	local standard_pose = 1
+	local elytra_gliding = 0
+	local sleeping = 0
+	local swimming = 0
+	local crawling = 0
+	local spin_attacking = 0
+	local not_crouching = 1
+	local crouching = 0
+	local pose = player:getPose()
+	if pose == "FALL_FLYING" then
+		standard_pose = 0
+		elytra_gliding = 1
+	elseif pose == "SLEEPING" then
+		standard_pose = 0
+		sleeping = 1
+	elseif pose == "SWIMMING" then
+		standard_pose = 0
+		if player:isInWater() then
+			swimming = 1
+		else
+			crawling = 1
+		end
+	elseif pose == "SPIN_ATTACK" then
+		standard_pose = 0
+		spin_attacking = 1
+	elseif pose == "CROUCHING" then
+		not_crouching = 0
+		crouching = 1
+	end
 	local ground
 	local air
 	if player:isOnGround() then
@@ -246,12 +283,21 @@ local function tick_animations()
 	local velocity = player:getVelocity()
 	local velocity_flat = vec(velocity.x, velocity.z)
 	local speed = velocity_flat:length()
-	if speed < VANILLA_WALK_SPEED then
-		set_walk_animation_speed(speed * WALK_ANIM_BASE_SPEED / VANILLA_WALK_SPEED)
+	local walk_speed
+	local base_speed
+	if crouching == 1 then
+		walk_speed = VANILLA_WALK_SPEED_SNEAKING
+		base_speed = WALK_ANIM_BASE_SPEED_SNEAKING
 	else
-		set_walk_animation_speed(WALK_ANIM_BASE_SPEED)
+		walk_speed = VANILLA_WALK_SPEED
+		base_speed = WALK_ANIM_BASE_SPEED
 	end
-	local moving = math.min(speed / VANILLA_WALK_SPEED, 1)
+	if speed < walk_speed then
+		set_walk_animation_speed(speed * base_speed / walk_speed)
+	else
+		set_walk_animation_speed(base_speed)
+	end
+	local moving = math.min(speed / walk_speed, 1)
 	local stopped = 1 - moving
 	local rot = player:getRot().y
 	local front = vec(degSin(-rot), degCos(-rot))
@@ -275,56 +321,72 @@ local function tick_animations()
 		hold_item_right_blend
 	)
 	tick_tween:setValue(
+		"stand_anim_blend",
+		standard_pose * not_crouching * ground * stopped
+	)
+	tick_tween:setValue(
 		"walk_forward_anim_blend",
-		standard_anims_blend * ground * moving * forward
+		standard_pose * not_crouching * ground * moving * forward
 	)
 	tick_tween:setValue(
 		"walk_forward_left_arm_anim_blend",
-		standard_anims_blend * ground * moving * forward * empty_hand_left_blend
+		standard_pose * not_crouching * ground * moving * forward * empty_hand_left_blend
 	)
 	tick_tween:setValue(
 		"walk_forward_right_arm_anim_blend",
-		standard_anims_blend * ground * moving * forward * empty_hand_right_blend
+		standard_pose * not_crouching * ground * moving * forward * empty_hand_right_blend
 	)
 	tick_tween:setValue(
 		"walk_back_anim_blend",
-		standard_anims_blend * ground * moving * back
+		standard_pose * not_crouching * ground * moving * back
 	)
 	tick_tween:setValue(
 		"walk_back_left_arm_anim_blend",
-		standard_anims_blend * ground * moving * back * empty_hand_left_blend
+		standard_pose * not_crouching * ground * moving * back * empty_hand_left_blend
 	)
 	tick_tween:setValue(
 		"walk_back_right_arm_anim_blend",
-		standard_anims_blend * ground * moving * back * empty_hand_right_blend
-	)
-	tick_tween:setValue(
-		"stand_anim_blend",
-		standard_anims_blend * ground * stopped
+		standard_pose * not_crouching * ground * moving * back * empty_hand_right_blend
 	)
 	tick_tween:setValue(
 		"air_forward_anim_blend",
-		standard_anims_blend * air * air_forward
+		standard_pose * not_crouching * air * air_forward
 	)
 	tick_tween:setValue(
 		"air_forward_left_arm_anim_blend",
-		standard_anims_blend * air * air_forward * empty_hand_left_blend
+		standard_pose * not_crouching * air * air_forward * empty_hand_left_blend
 	)
 	tick_tween:setValue(
 		"air_forward_right_arm_anim_blend",
-		standard_anims_blend * air * air_forward * empty_hand_right_blend
+		standard_pose * not_crouching * air * air_forward * empty_hand_right_blend
 	)
 	tick_tween:setValue(
 		"air_back_anim_blend",
-		standard_anims_blend * air * air_back
+		standard_pose * not_crouching * air * air_back
 	)
 	tick_tween:setValue(
 		"air_back_left_arm_anim_blend",
-		standard_anims_blend * air * air_back * empty_hand_left_blend
+		standard_pose * not_crouching * air * air_back * empty_hand_left_blend
 	)
 	tick_tween:setValue(
-		"air_back_right_arm_anim_blend",
-		standard_anims_blend * air * air_back * empty_hand_right_blend
+		"sneak_anim_blend",
+		standard_pose * crouching * stopped
+	)
+	tick_tween:setValue(
+		"sneak_forward_anim_blend",
+		standard_pose * crouching * moving * forward
+	)
+	tick_tween:setValue(
+		"sneak_back_anim_blend",
+		standard_pose * crouching * moving * back
+	)
+	tick_tween:setValue(
+		"sneak_left_arm_anim_blend",
+		standard_pose * crouching * empty_hand_left_blend
+	)
+	tick_tween:setValue(
+		"sneak_right_arm_anim_blend",
+		standard_pose * crouching * empty_hand_right_blend
 	)
 end
 
