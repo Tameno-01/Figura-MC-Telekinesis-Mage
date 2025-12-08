@@ -22,8 +22,6 @@ local left_item_pivot = left_item_part.PivotItemLeft
 local right_item_pivot = right_item_part.PivotItemRight
 local left_item_parent = left_item_pivot.OffsetItemLeft
 local right_item_parent = right_item_pivot.OffsetItemRight
-local root = models.model.root
-local head = root.CustomHead
 
 local always_playing_anims = {
 	"stand",
@@ -289,7 +287,6 @@ end
 
 function events.render(delta)
 	tick_tween:render(delta)
-	head:setRot(vanilla_model.HEAD:getOriginRot())
 end
 
 function events.item_render(item, mode, pos, rot, scale, left)
