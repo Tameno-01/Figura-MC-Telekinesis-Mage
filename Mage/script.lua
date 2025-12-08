@@ -36,7 +36,11 @@ local always_playing_anims = {
 	"hold_item_left",
 	"hold_item_right",
 	"air_forward",
+	"air_forward_left_arm",
+	"air_forward_right_arm",
 	"air_back",
+	"air_back_left_arm",
+	"air_back_right_arm",
 }
 
 local walk_anims = {
@@ -303,8 +307,24 @@ local function tick_animations()
 		standard_anims_blend * air * air_forward
 	)
 	tick_tween:setValue(
+		"air_forward_left_arm_anim_blend",
+		standard_anims_blend * air * air_forward * empty_hand_left_blend
+	)
+	tick_tween:setValue(
+		"air_forward_right_arm_anim_blend",
+		standard_anims_blend * air * air_forward * empty_hand_right_blend
+	)
+	tick_tween:setValue(
 		"air_back_anim_blend",
 		standard_anims_blend * air * air_back
+	)
+	tick_tween:setValue(
+		"air_back_left_arm_anim_blend",
+		standard_anims_blend * air * air_back * empty_hand_left_blend
+	)
+	tick_tween:setValue(
+		"air_back_right_arm_anim_blend",
+		standard_anims_blend * air * air_back * empty_hand_right_blend
 	)
 end
 
