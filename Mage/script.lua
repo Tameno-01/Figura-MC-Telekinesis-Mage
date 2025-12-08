@@ -15,6 +15,8 @@ local VANILLA_WALK_SPEED = 0.21585
 local WALK_ANIM_BASE_SPEED = 2
 local VANILLA_WALK_SPEED_SNEAKING = 0.06475
 local WALK_ANIM_BASE_SPEED_SNEAKING = 0.7
+local VANILLA_WALK_SPEED_CRAWLING = 0.06475
+local WALK_ANIM_BASE_SPEED_CRAWLING = 0.5
 
 local item_empty = models.model.ItemEmpty
 local world = models.model.World
@@ -48,6 +50,16 @@ local always_playing_anims = {
 	"sneak_back",
 	"sneak_left_arm",
 	"sneak_right_arm",
+	"sit",
+	"sit_left_arm",
+	"sit_right_arm",
+	"elytra",
+	"sleep",
+	"swim",
+	"crawl",
+	"crawl_forward",
+	"crawl_back",
+	"spin_attack"
 }
 
 local walk_anims = {
@@ -59,6 +71,8 @@ local walk_anims = {
 	"walk_back_right_arm",
 	"sneak_forward",
 	"sneak_back",
+	"crawl_forward",
+	"crawl_back",
 }
 
 local block_face_normals = {
@@ -257,6 +271,9 @@ local function tick_animations()
 	elseif pose == "SLEEPING" then
 		standard_pose = 0
 		sleeping = 1
+	elseif player:riptideSpinning() then
+		standard_pose = 0
+		spin_attacking = 1
 	elseif pose == "SWIMMING" then
 		standard_pose = 0
 		if player:isInWater() then
@@ -264,9 +281,6 @@ local function tick_animations()
 		else
 			crawling = 1
 		end
-	elseif pose == "SPIN_ATTACK" then
-		standard_pose = 0
-		spin_attacking = 1
 	elseif pose == "CROUCHING" then
 		not_crouching = 0
 		crouching = 1
@@ -280,12 +294,24 @@ local function tick_animations()
 		ground = 0
 		air = 1
 	end
+	local not_sitting
+	local sitting
+	if player:getVehicle() == nil then
+		not_sitting = 1
+		sitting = 0
+	else
+		not_sitting = 0
+		sitting = 1
+	end
 	local velocity = player:getVelocity()
 	local velocity_flat = vec(velocity.x, velocity.z)
 	local speed = velocity_flat:length()
 	local walk_speed
 	local base_speed
-	if crouching == 1 then
+	if crawling == 1 then
+		walk_speed = VANILLA_WALK_SPEED_CRAWLING
+		base_speed = WALK_ANIM_BASE_SPEED_CRAWLING
+	elseif crouching == 1 then
 		walk_speed = VANILLA_WALK_SPEED_SNEAKING
 		base_speed = WALK_ANIM_BASE_SPEED_SNEAKING
 	else
@@ -314,79 +340,123 @@ local function tick_animations()
 	local air_back = 1 - air_forward
 	tick_tween:setValue(
 		"hold_item_left_anim_blend",
-		hold_item_left_blend
+		standard_pose * hold_item_left_blend
 	)
 	tick_tween:setValue(
 		"hold_item_right_anim_blend",
-		hold_item_right_blend
+		standard_pose * hold_item_right_blend
 	)
 	tick_tween:setValue(
 		"stand_anim_blend",
-		standard_pose * not_crouching * ground * stopped
+		standard_pose * not_sitting * not_crouching * ground * stopped
 	)
 	tick_tween:setValue(
 		"walk_forward_anim_blend",
-		standard_pose * not_crouching * ground * moving * forward
+		standard_pose * not_sitting * not_crouching * ground * moving * forward
 	)
 	tick_tween:setValue(
 		"walk_forward_left_arm_anim_blend",
-		standard_pose * not_crouching * ground * moving * forward * empty_hand_left_blend
+		standard_pose * not_sitting * not_crouching * ground * moving * forward * empty_hand_left_blend
 	)
 	tick_tween:setValue(
 		"walk_forward_right_arm_anim_blend",
-		standard_pose * not_crouching * ground * moving * forward * empty_hand_right_blend
+		standard_pose * not_sitting * not_crouching * ground * moving * forward * empty_hand_right_blend
 	)
 	tick_tween:setValue(
 		"walk_back_anim_blend",
-		standard_pose * not_crouching * ground * moving * back
+		standard_pose * not_sitting * not_crouching * ground * moving * back
 	)
 	tick_tween:setValue(
 		"walk_back_left_arm_anim_blend",
-		standard_pose * not_crouching * ground * moving * back * empty_hand_left_blend
+		standard_pose * not_sitting * not_crouching * ground * moving * back * empty_hand_left_blend
 	)
 	tick_tween:setValue(
 		"walk_back_right_arm_anim_blend",
-		standard_pose * not_crouching * ground * moving * back * empty_hand_right_blend
+		standard_pose * not_sitting * not_crouching * ground * moving * back * empty_hand_right_blend
 	)
 	tick_tween:setValue(
 		"air_forward_anim_blend",
-		standard_pose * not_crouching * air * air_forward
+		standard_pose * not_sitting * not_crouching * air * air_forward
 	)
 	tick_tween:setValue(
 		"air_forward_left_arm_anim_blend",
-		standard_pose * not_crouching * air * air_forward * empty_hand_left_blend
+		standard_pose * not_sitting * not_crouching * air * air_forward * empty_hand_left_blend
 	)
 	tick_tween:setValue(
 		"air_forward_right_arm_anim_blend",
-		standard_pose * not_crouching * air * air_forward * empty_hand_right_blend
+		standard_pose * not_sitting * not_crouching * air * air_forward * empty_hand_right_blend
 	)
 	tick_tween:setValue(
 		"air_back_anim_blend",
-		standard_pose * not_crouching * air * air_back
+		standard_pose * not_sitting * not_crouching * air * air_back
 	)
 	tick_tween:setValue(
 		"air_back_left_arm_anim_blend",
-		standard_pose * not_crouching * air * air_back * empty_hand_left_blend
+		standard_pose * not_sitting * not_crouching * air * air_back * empty_hand_left_blend
+	)
+	tick_tween:setValue(
+		"air_back_right_arm_anim_blend",
+		standard_pose * not_sitting * not_crouching * air * air_back * empty_hand_right_blend
 	)
 	tick_tween:setValue(
 		"sneak_anim_blend",
-		standard_pose * crouching * stopped
+		standard_pose * not_sitting * crouching * stopped
 	)
 	tick_tween:setValue(
 		"sneak_forward_anim_blend",
-		standard_pose * crouching * moving * forward
+		standard_pose * not_sitting * crouching * moving * forward
 	)
 	tick_tween:setValue(
 		"sneak_back_anim_blend",
-		standard_pose * crouching * moving * back
+		standard_pose * not_sitting * crouching * moving * back
 	)
 	tick_tween:setValue(
 		"sneak_left_arm_anim_blend",
-		standard_pose * crouching * empty_hand_left_blend
+		standard_pose * not_sitting * crouching * empty_hand_left_blend
 	)
 	tick_tween:setValue(
 		"sneak_right_arm_anim_blend",
-		standard_pose * crouching * empty_hand_right_blend
+		standard_pose * not_sitting * crouching * empty_hand_right_blend
+	)
+	tick_tween:setValue(
+		"sit_anim_blend",
+		standard_pose * sitting
+	)
+	tick_tween:setValue(
+		"sit_left_arm_anim_blend",
+		standard_pose * sitting * empty_hand_left_blend
+	)
+	tick_tween:setValue(
+		"sit_right_arm_anim_blend",
+		standard_pose * sitting * empty_hand_right_blend
+	)
+	tick_tween:setValue(
+		"elytra_anim_blend",
+		elytra_gliding
+	)
+	tick_tween:setValue(
+		"sleep_anim_blend",
+		sleeping
+	)
+	tick_tween:setValue(
+		"swim_anim_blend",
+		swimming
+	)
+	tick_tween:setValue(
+		"crawl_anim_blend",
+		crawling * stopped
+	)
+	tick_tween:setValue(
+		"crawl_back_anim_blend",
+		crawling * moving * back
+	)
+	tick_tween:setValue(
+		"crawl_forward_anim_blend",
+		crawling * moving * forward
+	)
+	tick_tween:setValue(
+		"spin_attack_anim_blend",
+		spin_attacking
 	)
 end
 
