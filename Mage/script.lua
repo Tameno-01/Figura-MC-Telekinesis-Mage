@@ -11,6 +11,8 @@ local ITEM_BOB_ROTATION_INTENSITY = 5
 local ITEM_BOB_SPEED = 0.13
 local ITEM_USE_DISTANCE = 4
 local ITEM_USE_HEIGHT_OFFSET = 1
+local ITEM_THRUST_DURATION = 10
+local ITEM_THRUST_BELND_START = 5
 local VANILLA_WALK_SPEED = 0.21585
 local WALK_ANIM_BASE_SPEED = 2
 local VANILLA_WALK_SPEED_SNEAKING = 0.06475
@@ -39,6 +41,8 @@ local always_playing_anims = {
 	"walk_back_right_arm",
 	"hold_item_left",
 	"hold_item_right",
+	"thrust_item_left",
+	"thrust_item_right",
 	"air_forward",
 	"air_forward_left_arm",
 	"air_forward_right_arm",
@@ -59,7 +63,7 @@ local always_playing_anims = {
 	"crawl",
 	"crawl_forward",
 	"crawl_back",
-	"spin_attack"
+	"spin_attack",
 }
 
 local walk_anims = {
@@ -73,15 +77,6 @@ local walk_anims = {
 	"sneak_back",
 	"crawl_forward",
 	"crawl_back",
-}
-
-local block_face_normals = {
-	["up"] = vec(0.0, 1.0, 0.0),
-	["down"] = vec(0.0, -1.0, 0.0),
-	["north"] = vec(0.0, 0.0, -1.0),
-	["south"] = vec(0.0, 0.0, 1.0),
-	["east"] = vec(1.0, 0.0, 0.0),
-	["west"] = vec(-1.0, 0.0, 0.0)
 }
 
 local item_id_rotations = {
@@ -110,8 +105,8 @@ local item_bob_progress = 0
 
 local hold_item_left_blend
 local hold_item_right_blend
-local empty_hand_left_blend
-local empty_hand_right_blend
+local thrust_item_left_time_left = 0
+local thrust_item_right_time_left = 0
 
 vanilla_model.ALL:setVisible(false)
 
@@ -144,7 +139,7 @@ local function itemEquals(a, b)
 end
 
 local function get_item_desired_pos(left)
-	local rot = player:getRot().y
+	local rot = player:getBodyYaw()
 	local front = vec(degSin(-rot), 0, degCos(-rot)) * ITEM_FRONT_OFFSET
 	local side = vec(-degCos(-rot), 0, degSin(-rot)) * ITEM_SIDE_OFFSET
 	if left then
@@ -192,11 +187,9 @@ local function held_item_changed(item_stack, left)
 	if left then
 		current_left_item = item_stack
 		hold_item_left_blend = hold_item_blend
-		empty_hand_left_blend = empty_hand_blend
 	else
 		current_right_item = item_stack
 		hold_item_right_blend = hold_item_blend
-		empty_hand_right_blend = empty_hand_blend
 	end
 end
 
@@ -243,7 +236,7 @@ local function tick_item(left)
 	tick_tween:setPartPos(part, part_pos + speed)
 	tick_tween:setPartRot(part, vec(
 		math.sin(bob_progress + math.pi / 2) * ITEM_BOB_ROTATION_INTENSITY,
-		-player:getRot().y,
+		-player:getBodyYaw(),
 		0
 	))
 	prev_desired_pos:set(desired_pos)
@@ -255,7 +248,37 @@ local function set_walk_animation_speed(speed)
 	end
 end
 
+local function thrust_item(left)
+	if left then
+		thrust_item_left_time_left = ITEM_THRUST_DURATION
+	else
+		thrust_item_right_time_left = ITEM_THRUST_DURATION
+	end
+end
+
 local function tick_animations()
+	local thrust_item_left = 0
+	if thrust_item_left_time_left > 0 then
+		if thrust_item_left_time_left > ITEM_THRUST_BELND_START then
+			thrust_item_left = 1
+		else
+			thrust_item_left = thrust_item_left_time_left / ITEM_THRUST_BELND_START
+		end
+		thrust_item_left_time_left = thrust_item_left_time_left - 1
+	end
+	local hold_item_left = hold_item_left_blend * (1 - thrust_item_left)
+	local empty_hand_left = 1 - (thrust_item_left + hold_item_left)
+	local thrust_item_right = 0
+	if thrust_item_right_time_left > 0 then
+		if thrust_item_right_time_left > ITEM_THRUST_BELND_START then
+			thrust_item_right = 1
+		else
+			thrust_item_right = thrust_item_right_time_left / ITEM_THRUST_BELND_START
+		end
+		thrust_item_right_time_left = thrust_item_right_time_left - 1
+	end
+	local hold_item_right = hold_item_right_blend * (1 - thrust_item_right)
+	local empty_hand_right = 1 - (thrust_item_right + hold_item_right)
 	local standard_pose = 1
 	local elytra_gliding = 0
 	local sleeping = 0
@@ -340,11 +363,19 @@ local function tick_animations()
 	local air_back = 1 - air_forward
 	tick_tween:setValue(
 		"hold_item_left_anim_blend",
-		standard_pose * hold_item_left_blend
+		standard_pose * hold_item_left
 	)
 	tick_tween:setValue(
 		"hold_item_right_anim_blend",
-		standard_pose * hold_item_right_blend
+		standard_pose * hold_item_right
+	)
+	tick_tween:setValue(
+		"thrust_item_left_anim_blend",
+		standard_pose * thrust_item_left
+	)
+	tick_tween:setValue(
+		"thrust_item_right_anim_blend",
+		standard_pose * thrust_item_right
 	)
 	tick_tween:setValue(
 		"stand_anim_blend",
@@ -356,11 +387,11 @@ local function tick_animations()
 	)
 	tick_tween:setValue(
 		"walk_forward_left_arm_anim_blend",
-		standard_pose * not_sitting * not_crouching * ground * moving * forward * empty_hand_left_blend
+		standard_pose * not_sitting * not_crouching * ground * moving * forward * empty_hand_left
 	)
 	tick_tween:setValue(
 		"walk_forward_right_arm_anim_blend",
-		standard_pose * not_sitting * not_crouching * ground * moving * forward * empty_hand_right_blend
+		standard_pose * not_sitting * not_crouching * ground * moving * forward * empty_hand_right
 	)
 	tick_tween:setValue(
 		"walk_back_anim_blend",
@@ -368,11 +399,11 @@ local function tick_animations()
 	)
 	tick_tween:setValue(
 		"walk_back_left_arm_anim_blend",
-		standard_pose * not_sitting * not_crouching * ground * moving * back * empty_hand_left_blend
+		standard_pose * not_sitting * not_crouching * ground * moving * back * empty_hand_left
 	)
 	tick_tween:setValue(
 		"walk_back_right_arm_anim_blend",
-		standard_pose * not_sitting * not_crouching * ground * moving * back * empty_hand_right_blend
+		standard_pose * not_sitting * not_crouching * ground * moving * back * empty_hand_right
 	)
 	tick_tween:setValue(
 		"air_forward_anim_blend",
@@ -380,11 +411,11 @@ local function tick_animations()
 	)
 	tick_tween:setValue(
 		"air_forward_left_arm_anim_blend",
-		standard_pose * not_sitting * not_crouching * air * air_forward * empty_hand_left_blend
+		standard_pose * not_sitting * not_crouching * air * air_forward * empty_hand_left
 	)
 	tick_tween:setValue(
 		"air_forward_right_arm_anim_blend",
-		standard_pose * not_sitting * not_crouching * air * air_forward * empty_hand_right_blend
+		standard_pose * not_sitting * not_crouching * air * air_forward * empty_hand_right
 	)
 	tick_tween:setValue(
 		"air_back_anim_blend",
@@ -392,11 +423,11 @@ local function tick_animations()
 	)
 	tick_tween:setValue(
 		"air_back_left_arm_anim_blend",
-		standard_pose * not_sitting * not_crouching * air * air_back * empty_hand_left_blend
+		standard_pose * not_sitting * not_crouching * air * air_back * empty_hand_left
 	)
 	tick_tween:setValue(
 		"air_back_right_arm_anim_blend",
-		standard_pose * not_sitting * not_crouching * air * air_back * empty_hand_right_blend
+		standard_pose * not_sitting * not_crouching * air * air_back * empty_hand_right
 	)
 	tick_tween:setValue(
 		"sneak_anim_blend",
@@ -412,11 +443,11 @@ local function tick_animations()
 	)
 	tick_tween:setValue(
 		"sneak_left_arm_anim_blend",
-		standard_pose * not_sitting * crouching * empty_hand_left_blend
+		standard_pose * not_sitting * crouching * empty_hand_left
 	)
 	tick_tween:setValue(
 		"sneak_right_arm_anim_blend",
-		standard_pose * not_sitting * crouching * empty_hand_right_blend
+		standard_pose * not_sitting * crouching * empty_hand_right
 	)
 	tick_tween:setValue(
 		"sit_anim_blend",
@@ -424,11 +455,11 @@ local function tick_animations()
 	)
 	tick_tween:setValue(
 		"sit_left_arm_anim_blend",
-		standard_pose * sitting * empty_hand_left_blend
+		standard_pose * sitting * empty_hand_left
 	)
 	tick_tween:setValue(
 		"sit_right_arm_anim_blend",
-		standard_pose * sitting * empty_hand_right_blend
+		standard_pose * sitting * empty_hand_right
 	)
 	tick_tween:setValue(
 		"elytra_anim_blend",
@@ -568,4 +599,5 @@ function pings.use_item(left, pos)
 	end
 	tick_tween:setPartPos(item_part, pos)
 	speed:set(0, 0, 0)
+	thrust_item(left)
 end
