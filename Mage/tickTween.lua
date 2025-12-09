@@ -246,7 +246,9 @@ function tickTween:setPartPos(part, pos)
     self:addPartIfNeccesary(part, table)
 	local transforms = table[part]
 	if transforms.pos == nil then
-		transforms.pos = {}
+		transforms.pos = {
+			prev = part:getPos()
+		}
 	end
 	transforms.pos.next = pos
 end
@@ -264,7 +266,9 @@ function tickTween:setPartQuat(part, quat)
     self:addPartIfNeccesary(part, table)
 	local transforms = table[part]
 	if transforms.quat == nil then
-		transforms.quat = {}
+		transforms.quat = {
+			prev = EulerToQuat(part:getRot())
+		}
 	end
 	transforms.quat.next = quat
 end
@@ -289,15 +293,23 @@ function tickTween:setPartScale(part, scale)
     self:addPartIfNeccesary(part, table)
 	local transforms = table[part]
 	if transforms.scale == nil then
-		transforms.scale = {}
+		transforms.scale = {
+			prev = part:getScale()
+		}
 	end
 	transforms.scale.next = scale
 end
 
 ---@param part ModelPart
----@return nil
+---@return Vector3
 function tickTween:getPartPos(part)
-	local transforms = self.parts[part]
+	local table
+	if isPartWorldParented(part) then
+		table = self.worlParts
+	else
+		table = self.parts
+	end
+	local transforms = table[part]
 	if transforms == nil then
 		return part:getPos()
 	end
@@ -317,9 +329,15 @@ function tickTween:getPartPos(part)
 end
 
 ---@param part ModelPart
----@return nil
+---@return Vector3
 function tickTween:getPartRot(part)
-	local transforms = self.parts[part]
+	local table
+	if isPartWorldParented(part) then
+		table = self.worlParts
+	else
+		table = self.parts
+	end
+	local transforms = table[part]
 	if transforms == nil then
 		return part:getRot()
 	end
@@ -339,9 +357,15 @@ function tickTween:getPartRot(part)
 end
 
 ---@param part ModelPart
----@return nil
+---@return Vector3
 function tickTween:getPartScale(part)
-	local transforms = self.parts[part]
+	local table
+	if isPartWorldParented(part) then
+		table = self.worlParts
+	else
+		table = self.parts
+	end
+	local transforms = table[part]
 	if transforms == nil then
 		return part:getScale()
 	end
@@ -360,11 +384,86 @@ function tickTween:getPartScale(part)
 	return part:getScale()
 end
 
----@param name any
----@param value any
+---@param part ModelPart
+---@return nil
+function tickTween:teleportPartPos(part)
+	local table
+	if isPartWorldParented(part) then
+		table = self.worlParts
+	else
+		table = self.parts
+	end
+	local data = table[part]
+	if data == nil then
+		return
+	end
+	local pos_data = data.pos
+	if pos_data == nil then
+		return
+	end
+	pos_data.prev = nil
+end
+
+---@param part ModelPart
+---@return nil
+function tickTween:teleportPartRot(part)
+	local table
+	if isPartWorldParented(part) then
+		table = self.worlParts
+	else
+		table = self.parts
+	end
+	local data = table[part]
+	local quat_data = data.quat
+	if quat_data == nil then
+		return
+	end
+	quat_data.prev = nil
+end
+
+---@param part ModelPart
+---@return nil
+function tickTween:teleportPartScale(part)
+	local table
+	if isPartWorldParented(part) then
+		table = self.worlParts
+	else
+		table = self.parts
+	end
+	local data = table[part]
+	local scale_data = data.scale
+	if scale_data == nil then
+		return
+	end
+	scale_data.prev = nil
+end
+
+---@param part ModelPart
+---@return nil
+function tickTween:teleportPart(part)
+	self:teleportPartPos(part)
+	self:teleportPartRot(part)
+	self:teleportPartScale(part)
+end
+
+---@param name string
+---@param value number
 ---@return nil
 function tickTween:setValue(name, value)
 	self.values[name].next = value
+end
+
+---comment
+---@param name any
+---@param world any
+function tickTween:teleportValue(name, world)
+	local table
+	if world then
+		table = self.worldValues
+	else
+		table = self.values
+	end
+	table[name].prev = nil
 end
 
 ---@return nil

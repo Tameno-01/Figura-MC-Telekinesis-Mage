@@ -11,8 +11,10 @@ local ITEM_BOB_ROTATION_INTENSITY = 5
 local ITEM_BOB_SPEED = 0.13
 local ITEM_USE_DISTANCE = 4
 local ITEM_USE_HEIGHT_OFFSET = 1
-local ITEM_THRUST_DURATION = 6
-local ITEM_THRUST_BELND_START = 3
+local ITEM_THRUST_DURATION = 5
+local ITEM_THRUST_BELND_START = 2
+local ITEM_SPAWN_DOWN_OFFSET = 10
+local ITEM_SPAWN_UP_SPEED = 10
 local VANILLA_WALK_SPEED = 0.21585
 local WALK_ANIM_BASE_SPEED = 2
 local VANILLA_WALK_SPEED_SNEAKING = 0.06475
@@ -83,11 +85,75 @@ local item_id_rotations = {
 	["minecraft:fishing_rod"] = vec(55, 0, 0),
 	["minecraft:carrot_on_a_stick"] = vec(55, 0, 0),
 	["minecraft:trident"] = vec(90, 0, 0),
+	["minecraft:spyglass"] = vec(-90, 0, 0),
 }
 
 local item_tag_rotations = {
 	["minecraft:swords"] = vec(80, 0, 0),
 	["minecraft:shovels"] = vec(80, 0, 0),
+}
+
+local use_actions = {
+	EAT = {
+		front = 8,
+		side = 0,
+		up = -6,
+		rot = vec(-45, 0, 0),
+		anim = "use_on_self",
+		thrust = false,
+	},
+	DRINK = {
+		front = 8,
+		side = 0,
+		up = -6,
+		rot = vec(-45, 0, 0),
+		anim = "use_on_self",
+		thrust = false,
+	},
+	BLOCK = {
+		front = ITEM_FRONT_OFFSET,
+		side = 2,
+		up = -13,
+		rot = vec(0, 90, 0),
+		anim = "use_on_self",
+		thrust = false,
+	},
+	BOW = {
+		front = ITEM_FRONT_OFFSET,
+		side = ITEM_SIDE_OFFSET,
+		up = ITEM_UP_OFFSET,
+		anim = "charge",
+		thrust = false,
+	},
+	SPEAR = {
+		front = -10,
+		side = ITEM_SIDE_OFFSET,
+		up = ITEM_UP_OFFSET,
+		anim = "charge",
+		thrust = false,
+	},
+	CROSSBOW = {
+		front = ITEM_FRONT_OFFSET,
+		side = ITEM_SIDE_OFFSET,
+		up = ITEM_UP_OFFSET,
+		anim = "charge",
+		thrust = false,
+	},
+	SPYGLASS = {
+		front = 8,
+		side = 2,
+		up = -1,
+		anim = "use_on_self",
+		thrust = false,
+	},
+	TOOT_HORN = {
+		front = 7,
+		side = 0,
+		up = -6,
+		rot = vec(0, 90, 0),
+		anim = "use_on_self",
+		thrust = false,
+	},
 }
 
 local left_item_task
@@ -107,6 +173,9 @@ local hold_item_left_blend
 local hold_item_right_blend
 local thrust_item_left_time_left = 0
 local thrust_item_right_time_left = 0
+
+local left_item_rot_override_action = "NONE"
+local right_item_rot_override_action = "NONE"
 
 vanilla_model.ALL:setVisible(false)
 
@@ -138,14 +207,33 @@ local function itemEquals(a, b)
 	return true
 end
 
+local function get_active_hand()
+	if not player:isUsingItem() then
+		return nil
+	end
+	local main_hand = player:getActiveHand() == "MAIN_HAND"
+	return main_hand == player:isLeftHanded()
+end
+
 local function get_item_desired_pos(left)
+	local offsets = nil
+	if get_active_hand() == left then
+		offsets = use_actions[player:getActiveItem():getUseAction()]
+	end
+	if offsets == nil then
+		offsets = {
+			front = ITEM_FRONT_OFFSET,
+			side = ITEM_SIDE_OFFSET,
+			up = ITEM_UP_OFFSET,
+		}
+	end
 	local rot = player:getBodyYaw()
-	local front = vec(degSin(-rot), 0, degCos(-rot)) * ITEM_FRONT_OFFSET
-	local side = vec(-degCos(-rot), 0, degSin(-rot)) * ITEM_SIDE_OFFSET
+	local front = vec(degSin(-rot), 0, degCos(-rot)) * offsets.front
+	local side = vec(-degCos(-rot), 0, degSin(-rot)) * offsets.side
 	if left then
 		side = side * -1
 	end
-	local up = vec(0, player:getEyeHeight() * 16 + ITEM_UP_OFFSET, 0)
+	local up = vec(0, player:getEyeHeight() * 16 + offsets.up, 0)
 	return player:getPos() * 16 + front + side + up
 end
 
@@ -168,13 +256,19 @@ local function get_item_rotation(item_stack)
 end
 
 local function held_item_changed(item_stack, left)
+	local item_part
 	local item_pivot
 	if left then
+		item_part = left_item_part
 		item_pivot = left_item_pivot
 	else
+		item_part = right_item_part
 		item_pivot = right_item_pivot
 	end
-	item_pivot:setRot(get_item_rotation(item_stack))
+	tick_tween:setPartRot(item_pivot, get_item_rotation(item_stack))
+	tick_tween:teleportPart(item_pivot)
+	tick_tween:setPartPos(item_part, get_item_desired_pos(left) + vec(0, -ITEM_SPAWN_DOWN_OFFSET, 0))
+	tick_tween:teleportPart(item_part)
 	local hold_item_blend
 	local empty_hand_blend
 	if item_stack.id == "minecraft:air" then
@@ -187,9 +281,11 @@ local function held_item_changed(item_stack, left)
 	if left then
 		current_left_item = item_stack
 		hold_item_left_blend = hold_item_blend
+		left_item_speed = vec(0, ITEM_SPAWN_UP_SPEED, 0)
 	else
 		current_right_item = item_stack
 		hold_item_right_blend = hold_item_blend
+		right_item_speed = vec(0, ITEM_SPAWN_UP_SPEED, 0)
 	end
 end
 
@@ -212,14 +308,45 @@ local function tick_item(left)
 	local part
 	local speed
 	local prev_desired_pos
+	local rot_override_action
 	if left then
 		part = left_item_part
 		speed = left_item_speed
 		prev_desired_pos = left_item_prev_desired_pos
+		rot_override_action = left_item_rot_override_action
 	else
 		part = right_item_part
 		speed = right_item_speed
 		prev_desired_pos = right_item_prev_desired_pos
+		rot_override_action = right_item_rot_override_action
+	end
+	local current_rot_override_action = "NONE"
+	if get_active_hand() == left then
+		current_rot_override_action = player:getActiveItem():getUseAction()
+	end
+	if current_rot_override_action ~= rot_override_action then
+		local rotation_offset = vec(0, 0, 0)
+		local use_action_data = use_actions[current_rot_override_action]
+		if use_action_data ~= nil then
+			local possible_rot_offset = use_action_data.rot
+			if possible_rot_offset ~= nil then
+				rotation_offset = possible_rot_offset
+				if left then
+					rotation_offset = rotation_offset * vec(1, -1, 1)
+				end
+			end
+		end
+		local item_pivot
+		if left then
+			item_pivot = left_item_pivot
+		else
+			item_pivot = right_item_pivot
+		end
+		tick_tween:setPartRot(
+			item_pivot,
+			get_item_rotation(player:getHeldItem(player:isLeftHanded() ~= left)) + rotation_offset
+		)
+		rot_override_action = current_rot_override_action
 	end
 	local bob_progress = item_bob_progress
 	if left then
@@ -240,6 +367,11 @@ local function tick_item(left)
 		0
 	))
 	prev_desired_pos:set(desired_pos)
+	if left then
+		left_item_rot_override_action = rot_override_action
+	else
+		right_item_rot_override_action = rot_override_action
+	end
 end
 
 local function set_walk_animation_speed(speed)
@@ -341,7 +473,7 @@ local function tick_animations()
 		walk_speed = VANILLA_WALK_SPEED
 		base_speed = WALK_ANIM_BASE_SPEED
 	end
-	if speed < walk_speed then
+	if speed > walk_speed then
 		set_walk_animation_speed(speed * base_speed / walk_speed)
 	else
 		set_walk_animation_speed(base_speed)
