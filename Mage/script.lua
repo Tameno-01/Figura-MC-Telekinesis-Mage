@@ -352,7 +352,7 @@ local function tick_animations()
 	local front = vec(degSin(-rot), degCos(-rot))
 	local forward
 	local back
-	if front:dot(velocity_flat:normalized()) < -0.01 then
+	if front:dot(velocity_flat:normalized()) < -0.1 then
 		forward = 0
 		back = 1
 	else
