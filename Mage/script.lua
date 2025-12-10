@@ -11,8 +11,8 @@ local ITEM_BOB_ROTATION_INTENSITY = 5
 local ITEM_BOB_SPEED = 0.13
 local ITEM_USE_DISTANCE = 4
 local ITEM_USE_HEIGHT_OFFSET = 1
-local ITEM_THRUST_DURATION = 5
-local ITEM_THRUST_BELND_START = 2
+local ITEM_THRUST_DURATION = 6
+local ITEM_THRUST_BELND_START = 4
 local ITEM_SPAWN_DOWN_OFFSET = 10
 local ITEM_SPAWN_UP_SPEED = 10
 local VANILLA_WALK_SPEED = 0.21585
@@ -45,6 +45,10 @@ local always_playing_anims = {
 	"hold_item_right",
 	"thrust_item_left",
 	"thrust_item_right",
+	"charge_item_left",
+	"charge_item_right",
+	"use_on_self_left",
+	"use_on_self_right",
 	"air_forward",
 	"air_forward_left_arm",
 	"air_forward_right_arm",
@@ -123,14 +127,14 @@ local use_actions = {
 		side = ITEM_SIDE_OFFSET,
 		up = ITEM_UP_OFFSET,
 		anim = "charge",
-		thrust = false,
+		thrust = true,
 	},
 	SPEAR = {
 		front = -10,
 		side = ITEM_SIDE_OFFSET,
-		up = ITEM_UP_OFFSET,
+		up = 8,
 		anim = "charge",
-		thrust = false,
+		thrust = true,
 	},
 	CROSSBOW = {
 		front = ITEM_FRONT_OFFSET,
@@ -270,13 +274,10 @@ local function held_item_changed(item_stack, left)
 	tick_tween:setPartPos(item_part, get_item_desired_pos(left) + vec(0, -ITEM_SPAWN_DOWN_OFFSET, 0))
 	tick_tween:teleportPart(item_part)
 	local hold_item_blend
-	local empty_hand_blend
 	if item_stack.id == "minecraft:air" then
 		hold_item_blend = 0
-		empty_hand_blend = 1
 	else
 		hold_item_blend = 1
-		empty_hand_blend = 0
 	end
 	if left then
 		current_left_item = item_stack
@@ -286,6 +287,14 @@ local function held_item_changed(item_stack, left)
 		current_right_item = item_stack
 		hold_item_right_blend = hold_item_blend
 		right_item_speed = vec(0, ITEM_SPAWN_UP_SPEED, 0)
+	end
+end
+
+local function thrust_item(left)
+	if left then
+		thrust_item_left_time_left = ITEM_THRUST_DURATION
+	else
+		thrust_item_right_time_left = ITEM_THRUST_DURATION
 	end
 end
 
@@ -346,6 +355,12 @@ local function tick_item(left)
 			item_pivot,
 			get_item_rotation(player:getHeldItem(player:isLeftHanded() ~= left)) + rotation_offset
 		)
+		local action_data = use_actions[rot_override_action]
+		if action_data ~= nil then
+			if action_data.thrust then
+				thrust_item(left)
+			end
+		end
 		rot_override_action = current_rot_override_action
 	end
 	local bob_progress = item_bob_progress
@@ -380,15 +395,20 @@ local function set_walk_animation_speed(speed)
 	end
 end
 
-local function thrust_item(left)
-	if left then
-		thrust_item_left_time_left = ITEM_THRUST_DURATION
-	else
-		thrust_item_right_time_left = ITEM_THRUST_DURATION
-	end
-end
-
 local function tick_animations()
+	local left_arm_anim = "none"
+	local right_arm_anim = "none"
+	local active_item = player:getActiveItem()
+	if active_item.id ~= "minecraft:air" then
+		local item_action_data = use_actions[active_item:getUseAction()]
+		if item_action_data ~= nil then
+			if get_active_hand() then
+				left_arm_anim = item_action_data.anim
+			else
+				right_arm_anim = item_action_data.anim
+			end
+		end
+	end
 	local thrust_item_left = 0
 	if thrust_item_left_time_left > 0 then
 		if thrust_item_left_time_left > ITEM_THRUST_BELND_START then
@@ -398,8 +418,15 @@ local function tick_animations()
 		end
 		thrust_item_left_time_left = thrust_item_left_time_left - 1
 	end
-	local hold_item_left = hold_item_left_blend * (1 - thrust_item_left)
-	local empty_hand_left = 1 - (thrust_item_left + hold_item_left)
+	local charge_item_left = 0
+	local self_use_item_left = 0
+	if left_arm_anim == "charge" then
+		charge_item_left = 1 - thrust_item_left
+	elseif left_arm_anim == "use_on_self" then
+		self_use_item_left = 1 - thrust_item_left
+	end
+	local hold_item_left = hold_item_left_blend * (1 - (thrust_item_left + charge_item_left + self_use_item_left))
+	local empty_hand_left = 1 - (thrust_item_left + hold_item_left + charge_item_left + self_use_item_left)
 	local thrust_item_right = 0
 	if thrust_item_right_time_left > 0 then
 		if thrust_item_right_time_left > ITEM_THRUST_BELND_START then
@@ -409,8 +436,15 @@ local function tick_animations()
 		end
 		thrust_item_right_time_left = thrust_item_right_time_left - 1
 	end
-	local hold_item_right = hold_item_right_blend * (1 - thrust_item_right)
-	local empty_hand_right = 1 - (thrust_item_right + hold_item_right)
+	local charge_item_right = 0
+	local self_use_item_right = 0
+	if right_arm_anim == "charge" then
+		charge_item_right = 1 - thrust_item_right
+	elseif right_arm_anim == "use_on_self" then
+		self_use_item_right = 1 - thrust_item_right
+	end
+	local hold_item_right = hold_item_right_blend * (1 - (thrust_item_right + charge_item_right + self_use_item_right))
+	local empty_hand_right = 1 - (thrust_item_right + hold_item_right + charge_item_right + self_use_item_right)
 	local standard_pose = 1
 	local elytra_gliding = 0
 	local sleeping = 0
@@ -508,6 +542,22 @@ local function tick_animations()
 	tick_tween:setValue(
 		"thrust_item_right_anim_blend",
 		standard_pose * thrust_item_right
+	)
+	tick_tween:setValue(
+		"charge_item_left_anim_blend",
+		standard_pose * charge_item_left
+	)
+	tick_tween:setValue(
+		"charge_item_right_anim_blend",
+		standard_pose * charge_item_right
+	)
+	tick_tween:setValue(
+		"use_on_self_left_anim_blend",
+		standard_pose * self_use_item_left
+	)
+	tick_tween:setValue(
+		"use_on_self_right_anim_blend",
+		standard_pose * self_use_item_right
 	)
 	tick_tween:setValue(
 		"stand_anim_blend",
