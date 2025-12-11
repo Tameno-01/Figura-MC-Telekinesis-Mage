@@ -27,7 +27,7 @@ local VIEWMODEL_STIFFNESS = 0.4
 local VIEWMODEL_DAMPING = 0.5
 local VIEWMODEL_BOB_INTENSITY = 10
 local PRESPECTIVE_ROTATION = 1.5
-local VIEWMODEL_USE_DIST_MULTIPLIER = 0.1
+local VIEWMODEL_USE_DIST_MULTIPLIER = 3
 local VIEWMODEL_SPAWN_DOWN_OFFSET = 40
 
 local world_part = models.model.World
@@ -852,8 +852,10 @@ function events.tick()
 	end
 	left_item_task:setItem(left_item)
 	right_item_task:setItem(right_item)
-	viewmodel_left_item_task:setItem(left_item)
-	viewmodel_right_item_task:setItem(right_item)
+	if host:isHost() then
+		viewmodel_left_item_task:setItem(left_item)
+		viewmodel_right_item_task:setItem(right_item)
+	end
 	item_bob_progress = item_bob_progress + ITEM_BOB_SPEED
 	if item_bob_progress > math.pi * 2 then
 		item_bob_progress = item_bob_progress - (math.pi * 2)
@@ -974,7 +976,7 @@ function pings.use_item(left, pos)
 	tick_tween:setPartPos(item_part, pos)
 	speed:set(0, 0, 0)
 	if host:isHost() then
-		local dist = (pos - (player:getPos() + player:getEyeHeight())):length()
+		local dist = (pos - (player:getPos() + player:getEyeHeight()) * 16):length()
 		dist = dist * VIEWMODEL_USE_DIST_MULTIPLIER
 		viewmodel_pos_3d:set(0, 0, dist)
 		viewmodel_speed:set(0, 0, 0)
