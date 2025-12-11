@@ -2,7 +2,7 @@
 * text=auto eol=lf
 
 # Ignore some files when exporting.
-# Only include the avatar folder when downloading from GitHub.
+# Only include the Mage folder when downloading from GitHub.
 /**        export-ignore
-/avatar    !export-ignore
-/avatar/** !export-ignore
+/Mage    !export-ignore
+/Mage/** !export-ignore
