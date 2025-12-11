@@ -31,11 +31,11 @@ local VIEWMODEL_BOB_INTENSITY = 10
 local PRESPECTIVE_ROTATION = 1.5
 local VIEWMODEL_USE_DIST_MULTIPLIER = 2
 local VIEWMODEL_SPAWN_DOWN_OFFSET = 40
-local VIEWMODEL_LAG = 0.001
+local VIEWMODEL_LAG = 0.002
 local VIEWMODEL_POS_LAG = 150
 local VIEWMODEL_POS_LAG_Z = 0.1
 local VIEWMODEL_SHAKE_ITEM_ITENSITY = 30
-local VIEWMODEL_ARM_LAG = 0.015
+local VIEWMODEL_ARM_LAG = 0.02
 local VIEWMODEL_ARM_POS_LAG = 3
 local VIEWMODEL_ARM_STIFFNESS = 1.5
 
@@ -250,7 +250,7 @@ local prev_player_rot
 local prev_player_velocity = vec(0, 0, 0)
 
 vanilla_model.ALL:setVisible(false)
-viewmodel:setVisible(false)
+--viewmodel:setVisible(false)
 
 for i, anim_name in ipairs(always_playing_anims) do
 	local anim = animations.model[anim_name]
@@ -1030,25 +1030,25 @@ if host:isHost() then
 	end
 
 	function events.render(delta, context, matrix)
-		if not renderer:isFirstPerson() then
+		if context == "FIRST_PERSON" and player:getActiveItem().id ~= "minecraft:spyglass" and client:isHudEnabled() then
+			viewmodel:setVisible(true)
+			local window_size = client:getScaledWindowSize()
+			local viewmodelPos2d = window_size * -0.5
+			viewmodel:setPos(vec(viewmodelPos2d.x, viewmodelPos2d.y, 0.0))
+			local viewmodel_scale = window_size.y * VIEWMODEL_SCALE
+			viewmodel:setScale(vec(viewmodel_scale, viewmodel_scale, viewmodel_scale))
+			if world.exists() then
+				local view_pos = player:getPos() + vec(0, player:getEyeHeight(), 0)
+				local blockLight = world.getBlockLightLevel(view_pos)
+				local skyLight = world.getSkyLightLevel(view_pos)
+				viewmodel:setLight(blockLight, skyLight)
+			end
+		else
 			viewmodel:setVisible(false)
-			return
-		end
-		viewmodel:setVisible(player:getActiveItem().id ~= "minecraft:spyglass")
-		local window_size = client:getScaledWindowSize()
-		local viewmodelPos2d = window_size * -0.5
-		viewmodel:setPos(vec(viewmodelPos2d.x, viewmodelPos2d.y, 0.0))
-		local viewmodel_scale = window_size.y * VIEWMODEL_SCALE
-		viewmodel:setScale(vec(viewmodel_scale, viewmodel_scale, viewmodel_scale))
-		if world.exists() then
-			local view_pos = player:getPos() + vec(0, player:getEyeHeight(), 0)
-			local blockLight = world.getBlockLightLevel(view_pos)
-			local skyLight = world.getSkyLightLevel(view_pos)
-			viewmodel:setLight(blockLight, skyLight)
 		end
 	end
 
-	function events.world_render()
+	function events.world_render(delta)
 		left_item_part:setVisible(not renderer:isFirstPerson())
 		right_item_part:setVisible(not renderer:isFirstPerson())
 	end
