@@ -14,6 +14,8 @@ local ITEM_USE_HEIGHT_OFFSET = 1
 local ITEM_THRUST_DURATION = 6
 local ITEM_THRUST_BELND_START = 4
 local ITEM_SPAWN_DOWN_OFFSET = 10
+local ITEM_SHAKE_SPEED = math.pi / 2
+local ITEM_SHAKE_INTENSITY = 2
 local VANILLA_WALK_SPEED = 0.21585
 local WALK_ANIM_BASE_SPEED = 2
 local VANILLA_WALK_SPEED_SNEAKING = 0.06475
@@ -32,6 +34,7 @@ local VIEWMODEL_SPAWN_DOWN_OFFSET = 40
 local VIEWMODEL_LAG = 0.001
 local VIEWMODEL_POS_LAG = 150
 local VIEWMODEL_POS_LAG_Z = 0.1
+local VIEWMODEL_SHAKE_ITEM_ITENSITY = 30
 local VIEWMODEL_ARM_LAG = 0.015
 local VIEWMODEL_ARM_POS_LAG = 3
 local VIEWMODEL_ARM_STIFFNESS = 1.5
@@ -141,6 +144,7 @@ local use_actions = {
 		viewmodel_pos = vec(0, -90, 10),
 		anim = "use_on_self",
 		thrust = false,
+		shake = false,
 	},
 	DRINK = {
 		front = 8,
@@ -150,6 +154,7 @@ local use_actions = {
 		viewmodel_pos = vec(0, -90, 10),
 		anim = "use_on_self",
 		thrust = false,
+		shake = false,
 	},
 	BLOCK = {
 		front = ITEM_FRONT_OFFSET,
@@ -159,6 +164,7 @@ local use_actions = {
 		viewmodel_pos = vec(50, -150, 20),
 		anim = "use_on_self",
 		thrust = false,
+		shake = false,
 	},
 	BOW = {
 		front = ITEM_FRONT_OFFSET,
@@ -166,6 +172,7 @@ local use_actions = {
 		up = ITEM_UP_OFFSET,
 		anim = "charge",
 		thrust = true,
+		shake = true,
 	},
 	SPEAR = {
 		front = -10,
@@ -174,6 +181,7 @@ local use_actions = {
 		viewmodel_pos = vec(250, 0, 10),
 		anim = "charge",
 		thrust = true,
+		shake = true,
 	},
 	CROSSBOW = {
 		front = ITEM_FRONT_OFFSET,
@@ -181,6 +189,7 @@ local use_actions = {
 		up = ITEM_UP_OFFSET,
 		anim = "charge",
 		thrust = false,
+		shake = true,
 	},
 	SPYGLASS = {
 		front = 8,
@@ -189,6 +198,7 @@ local use_actions = {
 		anim = "use_on_self",
 		viewmodel_pos = vec(20, 0, 5),
 		thrust = false,
+		shake = false,
 	},
 	TOOT_HORN = {
 		front = 7,
@@ -198,6 +208,7 @@ local use_actions = {
 		viewmodel_pos = vec(0, -100, 15),
 		anim = "use_on_self",
 		thrust = false,
+		shake = false,
 	},
 }
 
@@ -215,6 +226,9 @@ local right_item_speed = vec(0, 0, 0)
 local left_item_prev_desired_pos
 local right_item_prev_desired_pos
 
+local shake_item_left = false
+local shake_item_right = false
+
 local viewmodel_left_item_speed = vec(0, 0, 0)
 local viewmodel_right_item_speed = vec(0, 0, 0)
 
@@ -222,14 +236,15 @@ local viewmodel_left_pos_3d = vec(0, 0, 0)
 local viewmodel_right_pos_3d = vec(0, 0, 0)
 
 local item_bob_progress = 0
+local item_shake_progress
 
 local hold_item_left_blend
 local hold_item_right_blend
 local thrust_item_left_time_left = 0
 local thrust_item_right_time_left = 0
 
-local left_item_rot_override_action = "NONE"
-local right_item_rot_override_action = "NONE"
+local left_item_special_use_action = "NONE"
+local right_item_special_use_action = "NONE"
 
 local prev_player_rot
 local prev_player_velocity = vec(0, 0, 0)
@@ -400,28 +415,32 @@ local function tick_item(left)
 	local part
 	local speed
 	local prev_desired_pos
-	local rot_override_action
+	local special_use_action
 	local viewmodel_item_pivot
+	local shake_item
 	if left then
 		part = left_item_part
 		speed = left_item_speed
 		prev_desired_pos = left_item_prev_desired_pos
-		rot_override_action = left_item_rot_override_action
+		special_use_action = left_item_special_use_action
 		viewmodel_item_pivot = viewmodel_left_item_pivot
+		shake_item = shake_item_left
 	else
 		part = right_item_part
 		speed = right_item_speed
 		prev_desired_pos = right_item_prev_desired_pos
-		rot_override_action = right_item_rot_override_action
+		special_use_action = right_item_special_use_action
 		viewmodel_item_pivot = viewmodel_right_item_pivot
+		shake_item = shake_item_right
 	end
-	local current_rot_override_action = "NONE"
+	local current_special_use_action = "NONE"
 	if get_active_hand() == left then
-		current_rot_override_action = player:getActiveItem():getUseAction()
+		current_special_use_action = player:getActiveItem():getUseAction()
 	end
-	if current_rot_override_action ~= rot_override_action then
+	if current_special_use_action ~= special_use_action then
+		shake_item = false
 		local rotation_offset = vec(0, 0, 0)
-		local use_action_data = use_actions[current_rot_override_action]
+		local use_action_data = use_actions[current_special_use_action]
 		if use_action_data ~= nil then
 			local possible_rot_offset = use_action_data.rot
 			if possible_rot_offset ~= nil then
@@ -430,6 +449,7 @@ local function tick_item(left)
 					rotation_offset = rotation_offset * vec(1, -1, 1)
 				end
 			end
+			shake_item = use_action_data.shake
 		end
 		local item_pivot
 		if left then
@@ -442,21 +462,31 @@ local function tick_item(left)
 		if host:isHost() then
 			tick_tween:setPartRot(viewmodel_item_pivot, rot)
 		end
-		local action_data = use_actions[rot_override_action]
+		local action_data = use_actions[special_use_action]
 		if action_data ~= nil then
 			if action_data.thrust then
 				thrust_item(left)
 			end
 		end
-		rot_override_action = current_rot_override_action
+		special_use_action = current_special_use_action
 	end
 	local bob_progress = item_bob_progress
 	if left then
 		bob_progress = bob_progress + math.pi / 2
 	end
+	local shake = vec(0, 0, 0)
+	if shake_item then
+		local player_rot = player:getBodyYaw()
+		shake = (
+			vec(-degCos(-player_rot), 0, degSin(-player_rot))
+			* math.sin(item_shake_progress)
+			* ITEM_SHAKE_INTENSITY
+		)
+	end
 	local desired_pos = (
 		get_item_desired_pos(left)
 		+ vec(0, math.sin(bob_progress) * ITEM_BOB_INTENSITY, 0)
+		+ shake
 	)
 	local desired_speed = desired_pos - prev_desired_pos
 	local part_pos = tick_tween:getPartPos(part)
@@ -470,9 +500,11 @@ local function tick_item(left)
 	))
 	prev_desired_pos:set(desired_pos)
 	if left then
-		left_item_rot_override_action = rot_override_action
+		left_item_special_use_action = special_use_action
+		shake_item_left = shake_item
 	else
-		right_item_rot_override_action = rot_override_action
+		right_item_special_use_action = special_use_action
+		shake_item_right = shake_item
 	end
 end
 
@@ -481,16 +513,19 @@ local function tick_viewmodel(left)
 	local part
 	local rot_part
 	local speed
+	local shake_item
 	if left then
 		pos_3d = viewmodel_left_pos_3d
 		part = viewmodel_left_item_part
 		rot_part = viewmodel_left_item_rot
 		speed = viewmodel_left_item_speed
+		shake_item = shake_item_left
 	else
 		pos_3d = viewmodel_right_pos_3d
 		part = viewmodel_right_item_part
 		rot_part = viewmodel_right_item_rot
 		speed = viewmodel_right_item_speed
+		shake_item = shake_item_right
 	end
 	local bob_progress = item_bob_progress
 	if left then
@@ -509,9 +544,14 @@ local function tick_viewmodel(left)
 	if not left then
 		item_pos = item_pos * vec(-1, 1, 1)
 	end
+	local shake = vec(0, 0, 0)
+	if shake_item then
+		shake.x = math.sin(item_shake_progress) * VIEWMODEL_SHAKE_ITEM_ITENSITY
+	end
 	local desired_pos = (
 		item_pos
 		+ vec(0, math.sin(bob_progress) * VIEWMODEL_BOB_INTENSITY, 0)
+		+ shake
 	)
 	speed:add((desired_pos - pos_3d) * VIEWMODEL_STIFFNESS)
 	speed:set(speed * (1.0 - VIEWMODEL_DAMPING))
@@ -889,7 +929,15 @@ function events.tick()
 	end
 	item_bob_progress = item_bob_progress + ITEM_BOB_SPEED
 	if item_bob_progress > math.pi * 2 then
-		item_bob_progress = item_bob_progress - (math.pi * 2)
+		item_bob_progress = item_bob_progress - math.pi * 2
+	end
+	if shake_item_left or shake_item_right then
+		item_shake_progress = item_shake_progress + ITEM_SHAKE_SPEED
+		if item_shake_progress > math.pi * 2 then
+			item_shake_progress = item_shake_progress - math.pi * 2
+		end
+	else
+		item_shake_progress = 0
 	end
 	tick_item(true)
 	tick_item(false)
