@@ -31,4 +31,5 @@ I probably won't fix thses issues, the avatar is compex enough as is! Tho if i s
 ## Editing and making changes
 
 You are free to do as you wish with this avatar as long as you credit me, if you do do something, please show me! I'd love to see!
+
 If you need help making changes, don't be afraid to ask in therad of the FiguraMC discord server for this avatar.
