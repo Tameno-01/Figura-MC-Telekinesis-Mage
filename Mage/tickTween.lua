@@ -414,6 +414,9 @@ function tickTween:teleportPartRot(part)
 		table = self.parts
 	end
 	local data = table[part]
+	if data == nil then
+		return
+	end
 	local quat_data = data.quat
 	if quat_data == nil then
 		return
@@ -431,6 +434,9 @@ function tickTween:teleportPartScale(part)
 		table = self.parts
 	end
 	local data = table[part]
+	if data == nil then
+		return
+	end
 	local scale_data = data.scale
 	if scale_data == nil then
 		return

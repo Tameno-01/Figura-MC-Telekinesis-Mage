@@ -14,24 +14,41 @@ local ITEM_USE_HEIGHT_OFFSET = 1
 local ITEM_THRUST_DURATION = 6
 local ITEM_THRUST_BELND_START = 4
 local ITEM_SPAWN_DOWN_OFFSET = 10
-local ITEM_SPAWN_UP_SPEED = 10
 local VANILLA_WALK_SPEED = 0.21585
 local WALK_ANIM_BASE_SPEED = 2
 local VANILLA_WALK_SPEED_SNEAKING = 0.06475
 local WALK_ANIM_BASE_SPEED_SNEAKING = 0.7
 local VANILLA_WALK_SPEED_CRAWLING = 0.06475
 local WALK_ANIM_BASE_SPEED_CRAWLING = 0.5
+local VIEWMODEL_SCALE = 0.06
+local FIRST_PERSON_ITEM_POS = vec(250, 0, 20)
+local FIRST_PERSON_ITEM_SCALE = 10
+local VIEWMODEL_STIFFNESS = 0.4
+local VIEWMODEL_DAMPING = 0.5
+local VIEWMODEL_BOB_INTENSITY = 10
+local PRESPECTIVE_ROTATION = 1.5
+local VIEWMODEL_USE_DIST_MULTIPLIER = 0.1
+local VIEWMODEL_SPAWN_DOWN_OFFSET = 40
 
-local item_empty = models.model.ItemEmpty
-local world = models.model.World
-local left_item_part = world.CustomLeftItem
-local right_item_part = world.CustomRightItem
+local world_part = models.model.World
+local left_item_part = world_part.CustomLeftItem
+local right_item_part = world_part.CustomRightItem
 local left_item_pivot = left_item_part.PivotItemLeft
 local right_item_pivot = right_item_part.PivotItemRight
 local left_item_parent = left_item_pivot.OffsetItemLeft
 local right_item_parent = right_item_pivot.OffsetItemRight
 local root = models.model.root
 local head = root.CustomHead
+local gui = models.model.GUI
+local viewmodel = gui.Viewmodel
+local viewmodel_left_item_part = viewmodel.ViewmodelCustomLeftItem
+local viewmodel_right_item_part = viewmodel.ViewmodelCustomRightItem
+local viewmodel_left_item_rot = viewmodel_left_item_part.ViewmodelRotItemLeft
+local viewmodel_right_item_rot = viewmodel_right_item_part.ViewmodelRotItemRight
+local viewmodel_left_item_pivot = viewmodel_left_item_rot.ViewmodelPivotItemLeft
+local viewmodel_right_item_pivot = viewmodel_right_item_rot.ViewmodelPivotItemRight
+local viewmodel_left_item_parent = viewmodel_left_item_pivot.ViewmodelOffsetItemLeft
+local viewmodel_right_item_parent = viewmodel_right_item_pivot.ViewmodelOffsetItemRight
 
 local always_playing_anims = {
 	"stand",
@@ -72,6 +89,17 @@ local always_playing_anims = {
 	"spin_attack",
 }
 
+if host:isHost() then
+	always_playing_anims[#always_playing_anims + 1] = "viewmodel_hold_left"
+	always_playing_anims[#always_playing_anims + 1] = "viewmodel_hold_right"
+	always_playing_anims[#always_playing_anims + 1] = "viewmodel_thrust_left"
+	always_playing_anims[#always_playing_anims + 1] = "viewmodel_thrust_right"
+	always_playing_anims[#always_playing_anims + 1] = "viewmodel_self_use_left"
+	always_playing_anims[#always_playing_anims + 1] = "viewmodel_self_use_right"
+	always_playing_anims[#always_playing_anims + 1] = "viewmodel_charge_left"
+	always_playing_anims[#always_playing_anims + 1] = "viewmodel_charge_right"
+end
+
 local walk_anims = {
 	"walk_forward",
 	"walk_forward_left_arm",
@@ -103,6 +131,7 @@ local use_actions = {
 		side = 0,
 		up = -6,
 		rot = vec(-45, 0, 0),
+		viewmodel_pos = vec(0, -75, 10),
 		anim = "use_on_self",
 		thrust = false,
 	},
@@ -111,6 +140,7 @@ local use_actions = {
 		side = 0,
 		up = -6,
 		rot = vec(-45, 0, 0),
+		viewmodel_pos = vec(0, -75, 10),
 		anim = "use_on_self",
 		thrust = false,
 	},
@@ -119,6 +149,7 @@ local use_actions = {
 		side = 2,
 		up = -13,
 		rot = vec(0, 90, 0),
+		viewmodel_pos = vec(50, -150, 20),
 		anim = "use_on_self",
 		thrust = false,
 	},
@@ -133,6 +164,7 @@ local use_actions = {
 		front = -10,
 		side = ITEM_SIDE_OFFSET,
 		up = 8,
+		viewmodel_pos = vec(250, 0, 10),
 		anim = "charge",
 		thrust = true,
 	},
@@ -155,6 +187,7 @@ local use_actions = {
 		side = 0,
 		up = -6,
 		rot = vec(0, 90, 0),
+		viewmodel_pos = vec(0, -100, 15),
 		anim = "use_on_self",
 		thrust = false,
 	},
@@ -163,6 +196,9 @@ local use_actions = {
 local left_item_task
 local right_item_task
 
+local viewmodel_left_item_task
+local viewmodel_right_item_task
+
 local current_left_item
 local current_right_item
 
@@ -170,6 +206,12 @@ local left_item_speed = vec(0, 0, 0)
 local right_item_speed = vec(0, 0, 0)
 local left_item_prev_desired_pos
 local right_item_prev_desired_pos
+
+local viewmodel_left_item_speed = vec(0, 0, 0)
+local viewmodel_right_item_speed = vec(0, 0, 0)
+
+local viewmodel_left_pos_3d = vec(0, 0, 0)
+local viewmodel_right_pos_3d = vec(0, 0, 0)
 
 local item_bob_progress = 0
 
@@ -182,6 +224,7 @@ local left_item_rot_override_action = "NONE"
 local right_item_rot_override_action = "NONE"
 
 vanilla_model.ALL:setVisible(false)
+viewmodel:setVisible(false)
 
 for i, anim_name in ipairs(always_playing_anims) do
 	local anim = animations.model[anim_name]
@@ -197,7 +240,7 @@ local function degSin(x)
 	return math.sin(math.rad(x))
 end
 
-function degCos(x)
+local function degCos(x)
 	return math.cos(math.rad(x))
 end
 
@@ -262,17 +305,38 @@ end
 local function held_item_changed(item_stack, left)
 	local item_part
 	local item_pivot
+	local viewmodel_item_part
+	local viewmodel_item_pivot
+	local viewmodel_pos_3d
 	if left then
 		item_part = left_item_part
 		item_pivot = left_item_pivot
+		viewmodel_item_part = viewmodel_left_item_part
+		viewmodel_item_pivot = viewmodel_left_item_pivot
+		viewmodel_pos_3d = viewmodel_left_pos_3d
 	else
 		item_part = right_item_part
 		item_pivot = right_item_pivot
+		viewmodel_item_part = viewmodel_right_item_part
+		viewmodel_item_pivot = viewmodel_right_item_pivot
+		viewmodel_pos_3d = viewmodel_right_pos_3d
 	end
-	tick_tween:setPartRot(item_pivot, get_item_rotation(item_stack))
-	tick_tween:teleportPart(item_pivot)
+	local rot = get_item_rotation(item_stack)
+	item_pivot:setRot(rot)
 	tick_tween:setPartPos(item_part, get_item_desired_pos(left) + vec(0, -ITEM_SPAWN_DOWN_OFFSET, 0))
 	tick_tween:teleportPart(item_part)
+	if host:isHost() then
+		viewmodel_item_pivot:setRot(rot)
+		local first_person_item_pos
+		if left then
+			first_person_item_pos = FIRST_PERSON_ITEM_POS
+		else
+			first_person_item_pos = FIRST_PERSON_ITEM_POS * vec(-1, 1, 1)
+		end
+		first_person_item_pos = first_person_item_pos + vec(0, -VIEWMODEL_SPAWN_DOWN_OFFSET, 0)
+		viewmodel_pos_3d:set(first_person_item_pos)
+		tick_tween:teleportPart(viewmodel_item_part)
+	end
 	local hold_item_blend
 	if item_stack.id == "minecraft:air" then
 		hold_item_blend = 0
@@ -282,11 +346,11 @@ local function held_item_changed(item_stack, left)
 	if left then
 		current_left_item = item_stack
 		hold_item_left_blend = hold_item_blend
-		left_item_speed = vec(0, ITEM_SPAWN_UP_SPEED, 0)
+		left_item_speed = player:getVelocity() * 16
 	else
 		current_right_item = item_stack
 		hold_item_right_blend = hold_item_blend
-		right_item_speed = vec(0, ITEM_SPAWN_UP_SPEED, 0)
+		right_item_speed = player:getVelocity() * 16
 	end
 end
 
@@ -302,14 +366,22 @@ local function init_item(left)
 	local desired_pos = get_item_desired_pos(left)
 	if left then
 		left_item_prev_desired_pos = desired_pos
-		left_item_part:setPos(desired_pos)
 		left_item_task = left_item_parent:newItem("left_item")
 		left_item_task:setDisplayMode("THIRD_PERSON_LEFT_HAND")
+		if host:isHost() then
+			viewmodel_left_item_part:setScale(vec(FIRST_PERSON_ITEM_SCALE, FIRST_PERSON_ITEM_SCALE, FIRST_PERSON_ITEM_SCALE))
+			viewmodel_left_item_task = viewmodel_left_item_parent:newItem("viewmodel_left_item")
+			viewmodel_left_item_task:setDisplayMode("THIRD_PERSON_LEFT_HAND")
+		end
 	else
 		right_item_prev_desired_pos = desired_pos
-		right_item_part:setPos(desired_pos)
 		right_item_task = right_item_parent:newItem("right_item")
 		right_item_task:setDisplayMode("THIRD_PERSON_RIGHT_HAND")
+		if host:isHost() then
+			viewmodel_right_item_part:setScale(vec(FIRST_PERSON_ITEM_SCALE, FIRST_PERSON_ITEM_SCALE, FIRST_PERSON_ITEM_SCALE))
+			viewmodel_right_item_task = viewmodel_right_item_parent:newItem("viewmodel_right_item")
+			viewmodel_right_item_task:setDisplayMode("THIRD_PERSON_RIGHT_HAND")
+		end
 	end
 end
 
@@ -318,16 +390,19 @@ local function tick_item(left)
 	local speed
 	local prev_desired_pos
 	local rot_override_action
+	local viewmodel_item_pivot
 	if left then
 		part = left_item_part
 		speed = left_item_speed
 		prev_desired_pos = left_item_prev_desired_pos
 		rot_override_action = left_item_rot_override_action
+		viewmodel_item_pivot = viewmodel_left_item_pivot
 	else
 		part = right_item_part
 		speed = right_item_speed
 		prev_desired_pos = right_item_prev_desired_pos
 		rot_override_action = right_item_rot_override_action
+		viewmodel_item_pivot = viewmodel_right_item_pivot
 	end
 	local current_rot_override_action = "NONE"
 	if get_active_hand() == left then
@@ -351,10 +426,11 @@ local function tick_item(left)
 		else
 			item_pivot = right_item_pivot
 		end
-		tick_tween:setPartRot(
-			item_pivot,
-			get_item_rotation(player:getHeldItem(player:isLeftHanded() ~= left)) + rotation_offset
-		)
+		local rot = get_item_rotation(player:getHeldItem(player:isLeftHanded() ~= left)) + rotation_offset
+		tick_tween:setPartRot(item_pivot, rot)
+		if host:isHost() then
+			tick_tween:setPartRot(viewmodel_item_pivot, rot)
+		end
 		local action_data = use_actions[rot_override_action]
 		if action_data ~= nil then
 			if action_data.thrust then
@@ -386,6 +462,58 @@ local function tick_item(left)
 		left_item_rot_override_action = rot_override_action
 	else
 		right_item_rot_override_action = rot_override_action
+	end
+end
+
+local function tick_viewmodel(left)
+	local pos_3d
+	local part
+	local rot_part
+	local speed
+	if left then
+		pos_3d = viewmodel_left_pos_3d
+		part = viewmodel_left_item_part
+		rot_part = viewmodel_left_item_rot
+		speed = viewmodel_left_item_speed
+	else
+		pos_3d = viewmodel_right_pos_3d
+		part = viewmodel_right_item_part
+		rot_part = viewmodel_right_item_rot
+		speed = viewmodel_right_item_speed
+	end
+	local bob_progress = item_bob_progress
+	if left then
+		bob_progress = bob_progress + math.pi / 2
+	end
+	local item_pos = FIRST_PERSON_ITEM_POS
+	if get_active_hand() == left then
+		local use_action_data = use_actions[player:getActiveItem():getUseAction()]
+		if use_action_data ~= nil then
+			local pos_override = use_action_data.viewmodel_pos
+			if pos_override ~= nil then
+				item_pos = pos_override
+			end
+		end
+	end
+	if not left then
+		item_pos = item_pos * vec(-1, 1, 1)
+	end
+	local desired_pos = (
+		item_pos
+		+ vec(0, math.sin(bob_progress) * VIEWMODEL_BOB_INTENSITY, 0)
+	)
+	speed:add((desired_pos - pos_3d) * VIEWMODEL_STIFFNESS)
+	speed:set(speed * (1.0 - VIEWMODEL_DAMPING))
+	pos_3d:add(speed)
+	tick_tween:setPartPos(part, part_pos)
+	tick_tween:setPartRot(rot_part, vec(math.sin(bob_progress + math.pi / 2) * ITEM_BOB_ROTATION_INTENSITY, 0, 0))
+	if pos_3d.z > 0.01 then
+		tick_tween:setPartPos(part, vec(pos_3d.x / pos_3d.z, pos_3d.y / pos_3d.z, pos_3d.z))
+		tick_tween:setPartScale(part, FIRST_PERSON_ITEM_SCALE / pos_3d.z)
+		local rot = vec(pos_3d.y, -pos_3d.x, 0)
+		rot = rot * PRESPECTIVE_ROTATION
+		rot = rot / pos_3d.z
+		tick_tween:setPartRot(part, rot)
 	end
 end
 
@@ -671,6 +799,40 @@ local function tick_animations()
 		"spin_attack_anim_blend",
 		spin_attacking
 	)
+	if host:isHost() then
+		tick_tween:setValue(
+			"viewmodel_hold_left_anim_blend",
+			hold_item_left
+		)
+		tick_tween:setValue(
+			"viewmodel_hold_right_anim_blend",
+			hold_item_right
+		)
+		tick_tween:setValue(
+			"viewmodel_thrust_left_anim_blend",
+			thrust_item_left
+		)
+		tick_tween:setValue(
+			"viewmodel_thrust_right_anim_blend",
+			thrust_item_right
+		)
+		tick_tween:setValue(
+			"viewmodel_self_use_left_anim_blend",
+			self_use_item_left
+		)
+		tick_tween:setValue(
+			"viewmodel_self_use_right_anim_blend",
+			self_use_item_right
+		)
+		tick_tween:setValue(
+			"viewmodel_charge_left_anim_blend",
+			charge_item_left
+		)
+		tick_tween:setValue(
+			"viewmodel_charge_right_anim_blend",
+			charge_item_right
+		)
+	end
 end
 
 function events.entity_init()
@@ -690,12 +852,18 @@ function events.tick()
 	end
 	left_item_task:setItem(left_item)
 	right_item_task:setItem(right_item)
+	viewmodel_left_item_task:setItem(left_item)
+	viewmodel_right_item_task:setItem(right_item)
 	item_bob_progress = item_bob_progress + ITEM_BOB_SPEED
 	if item_bob_progress > math.pi * 2 then
 		item_bob_progress = item_bob_progress - (math.pi * 2)
 	end
 	tick_item(true)
 	tick_item(false)
+	if host:isHost() then
+		tick_viewmodel(true)
+		tick_viewmodel(false)
+	end
 	tick_animations()
 	tick_tween:endTick()
 end
@@ -707,12 +875,6 @@ end
 function events.render(delta)
 	tick_tween:render(delta)
 	head:setRot(vanilla_model.head:getOriginRot())
-end
-
-function events.item_render(item, mode, pos, rot, scale, left)
-	if mode == "FIRST_PERSON_LEFT_HAND" or mode == "FIRST_PERSON_RIGHT_HAND" then
-		return item_empty
-	end
 end
 
 if host:isHost() then
@@ -764,22 +926,57 @@ if host:isHost() then
 		item_use_pos = nil
 	end
 
+	function events.render(delta, context, matrix)
+		if not renderer:isFirstPerson() then
+			viewmodel:setVisible(false)
+			left_item_part:setVisible(true)
+			right_item_part:setVisible(true)
+			return
+		end
+		viewmodel:setVisible(player:getActiveItem().id ~= "minecraft:spyglass")
+		left_item_part:setVisible(false)
+		right_item_part:setVisible(false)
+		local window_size = client:getScaledWindowSize()
+		local viewmodelPos2d = window_size * -0.5
+		viewmodel:setPos(vec(viewmodelPos2d.x, viewmodelPos2d.y, 0.0))
+		local viewmodel_scale = window_size.y * VIEWMODEL_SCALE
+		viewmodel:setScale(vec(viewmodel_scale, viewmodel_scale, viewmodel_scale))
+		if world.exists() then
+			local view_pos = player:getPos() + vec(0, player:getEyeHeight(), 0)
+			local blockLight = world.getBlockLightLevel(view_pos)
+			local skyLight = world.getSkyLightLevel(view_pos)
+			viewmodel:setLight(blockLight, skyLight)
+		end
+	end
+
 end
 
 function pings.use_item(left, pos)
+	thrust_item(left)
 	if pos == nil then
 		return
 	end
 	local item_part
 	local speed
+	local viewmodel_pos_3d
+	local viewmodel_speed
 	if left then
 		item_part = left_item_part
 		speed = left_item_speed
+		viewmodel_pos_3d = viewmodel_left_pos_3d
+		viewmodel_speed = viewmodel_left_item_speed
 	else
 		item_part = right_item_part
 		speed = right_item_speed
+		viewmodel_pos_3d = viewmodel_right_pos_3d
+		viewmodel_speed = viewmodel_right_item_speed
 	end
 	tick_tween:setPartPos(item_part, pos)
 	speed:set(0, 0, 0)
-	thrust_item(left)
+	if host:isHost() then
+		local dist = (pos - (player:getPos() + player:getEyeHeight())):length()
+		dist = dist * VIEWMODEL_USE_DIST_MULTIPLIER
+		viewmodel_pos_3d:set(0, 0, dist)
+		viewmodel_speed:set(0, 0, 0)
+	end
 end
