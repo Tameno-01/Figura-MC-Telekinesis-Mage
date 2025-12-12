@@ -250,7 +250,7 @@ local prev_player_rot
 local prev_player_velocity = vec(0, 0, 0)
 
 vanilla_model.ALL:setVisible(false)
---viewmodel:setVisible(false)
+viewmodel:setVisible(false)
 
 for i, anim_name in ipairs(always_playing_anims) do
 	local anim = animations.model[anim_name]
@@ -1029,26 +1029,25 @@ if host:isHost() then
 		item_use_pos = nil
 	end
 
-	function events.render(delta, context, matrix)
-		if context == "FIRST_PERSON" and player:getActiveItem().id ~= "minecraft:spyglass" and client:isHudEnabled() then
-			viewmodel:setVisible(true)
-			local window_size = client:getScaledWindowSize()
-			local viewmodelPos2d = window_size * -0.5
-			viewmodel:setPos(vec(viewmodelPos2d.x, viewmodelPos2d.y, 0.0))
-			local viewmodel_scale = window_size.y * VIEWMODEL_SCALE
-			viewmodel:setScale(vec(viewmodel_scale, viewmodel_scale, viewmodel_scale))
-			if world.exists() then
-				local view_pos = player:getPos() + vec(0, player:getEyeHeight(), 0)
-				local blockLight = world.getBlockLightLevel(view_pos)
-				local skyLight = world.getSkyLightLevel(view_pos)
-				viewmodel:setLight(blockLight, skyLight)
-			end
-		else
-			viewmodel:setVisible(false)
-		end
-	end
-
 	function events.world_render(delta)
+		if player:isLoaded() then
+			if renderer:isFirstPerson() and player:getActiveItem().id ~= "minecraft:spyglass" and client:isHudEnabled() then
+				viewmodel:setVisible(true)
+				local window_size = client:getScaledWindowSize()
+				local viewmodelPos2d = window_size * -0.5
+				viewmodel:setPos(vec(viewmodelPos2d.x, viewmodelPos2d.y, 0.0))
+				local viewmodel_scale = window_size.y * VIEWMODEL_SCALE
+				viewmodel:setScale(vec(viewmodel_scale, viewmodel_scale, viewmodel_scale))
+				if world.exists() then
+					local view_pos = player:getPos() + vec(0, player:getEyeHeight(), 0)
+					local blockLight = world.getBlockLightLevel(view_pos)
+					local skyLight = world.getSkyLightLevel(view_pos)
+					viewmodel:setLight(blockLight, skyLight)
+				end
+			else
+				viewmodel:setVisible(false)
+			end
+		end
 		left_item_part:setVisible(not renderer:isFirstPerson())
 		right_item_part:setVisible(not renderer:isFirstPerson())
 	end
